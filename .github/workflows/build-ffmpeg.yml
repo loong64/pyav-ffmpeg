@@ -1,0 +1,117 @@
+name: build-ffmpeg
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        default: 'latest'
+        description: 'Package version'
+        type: string
+        required: true
+  schedule:
+    # Run once a week on Fridays
+    - cron: "0 0 * * FRI"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      app_build: ${{ steps.get-version.outputs.build }}
+      app_version: ${{ steps.get-version.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get-version
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.version }}" = "latest" ]; then
+            app_version=$(curl -s "https://api.github.com/repos/PyAV-Org/pyav-ffmpeg/releases/latest" | jq -r .tag_name)
+          else
+            app_version=${{ github.event.inputs.version }}
+          fi
+          if [ -z "${app_version}" ] || [ "${app_version}" == "null" ]; then
+            echo "Failed to get version"
+            exit 1
+          fi
+          
+          echo "app_version=${app_version}" >> $GITHUB_ENV
+          echo "app_version=${app_version}" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "========== Build Args =========="
+          echo "app_version=${app_version}"
+
+          gh release view ${app_version} -R ${{ github.repository }} | grep ffmpeg-manylinux_loongarch64.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    runs-on: ${{ matrix.os }}
+    needs: check
+    if: needs.check.outputs.app_build == '1'
+    env:
+      app_version: ${{ needs.check.outputs.app_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ 'ubuntu-24.04' ]
+        arch: [ 'loongarch64' ]
+        build: [ "manylinux_", "musllinux_" ]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: PyAV-Org/pyav-ffmpeg
+          ref: ${{ env.app_version }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Prepare build
+        run: |
+          # loongarch64 not support cuda
+          sed -i 's@use_cuda = plat in {"Linux", "Windows"}@use_cuda = False@g' scripts/build-ffmpeg.py
+          echo "PIP_EXTRA_INDEX_URL=https://gitlab.com/api/v4/projects/65746188/packages/pypi/simple" >> $GITHUB_ENV
+
+      - name: Build FFmpeg
+        uses: loong64/cibuildwheel@v3.1.3
+        env:
+          CIBW_ARCHS: ${{ matrix.arch }}
+          CIBW_BEFORE_BUILD: python scripts/build-ffmpeg.py /tmp/vendor --community
+          # CIBW_BEFORE_BUILD_WINDOWS: python scripts\build-ffmpeg.py C:\cibw\vendor --community
+          CIBW_BUILD: "cp311-${{ matrix.build }}${{ matrix.arch }}"
+          CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: LD_LIBRARY_PATH=/tmp/vendor/lib:$LD_LIBRARY_PATH auditwheel repair -w {dest_dir} {wheel}
+          # CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair --add-path C:\cibw\vendor\bin -w {dest_dir} {wheel}
+          CIBW_TEST_COMMAND: python -c "import dummy"
+
+      - name: Upload FFmpeg
+        uses: actions/upload-artifact@v4
+        with:
+          name: output-${{ matrix.os }}-${{ matrix.arch }}
+          path: wheelhouse/*.tar.gz
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [ check, build ]
+    if: needs.check.outputs.app_build == '1'
+    env:
+      app_version: ${{ needs.check.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download FFmpeg
+        uses: actions/download-artifact@v4
+        with:
+          pattern: output-*
+          path: output
+          merge-multiple: true
+
+      - name: Create a Release on GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.app_version }}
+          tag_name: ${{ env.app_version }}
+          files: output/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
