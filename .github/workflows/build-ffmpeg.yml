@@ -74,15 +74,14 @@ jobs:
           echo "PIP_EXTRA_INDEX_URL=https://gitlab.com/api/v4/projects/65746188/packages/pypi/simple" >> $GITHUB_ENV
 
       - name: Build FFmpeg
-        uses: loong64/cibuildwheel@v3.1.3
+        uses: loong64/cibuildwheel@v3.3.0
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
-          CIBW_BEFORE_BUILD: python scripts/build-ffmpeg.py /tmp/vendor --community
-          # CIBW_BEFORE_BUILD_WINDOWS: python scripts\build-ffmpeg.py C:\cibw\vendor --community
+          CIBW_BEFORE_BUILD: > 
+            python scripts/build-ffmpeg.py /tmp/vendor --community
           CIBW_BUILD: "cp311-${{ matrix.build }}${{ matrix.arch }}"
           CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL
-          CIBW_REPAIR_WHEEL_COMMAND_LINUX: LD_LIBRARY_PATH=/tmp/vendor/lib:$LD_LIBRARY_PATH auditwheel repair -w {dest_dir} {wheel}
-          # CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair --add-path C:\cibw\vendor\bin -w {dest_dir} {wheel}
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: LD_LIBRARY_PATH=/tmp/vendor/lib:$LD_LIBRARY_PATH auditwheel repair --exclude libmvec.so.1 --exclude libmvec-2.so --exclude libmvec.so --exclude libmvec -w {dest_dir} {wheel}
           CIBW_TEST_COMMAND: python -c "import dummy"
 
       - name: Upload FFmpeg
