@@ -40,7 +40,7 @@ jobs:
           echo "========== Build Args =========="
           echo "app_version=${app_version}"
 
-          gh release view ${app_version} -R ${{ github.repository }} | grep ffmpeg-manylinux_loongarch64.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
+          gh release view ${app_version} -R ${{ github.repository }} | grep ffmpeg-manylinux-loongarch64.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -83,6 +83,13 @@ jobs:
           CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: LD_LIBRARY_PATH=/tmp/vendor/lib:$LD_LIBRARY_PATH auditwheel repair --exclude libmvec.so.1 --exclude libmvec-2.so --exclude libmvec.so --exclude libmvec -w {dest_dir} {wheel}
           CIBW_TEST_COMMAND: python -c "import dummy"
+
+      - name: Rename file
+        run: |
+          case "${{ matrix.build }}" in
+            "manylinux_") mv wheelhouse/ffmpeg-manylinux-x86_64.tar.gz wheelhouse/ffmpeg-manylinux-loongarch64.tar.gz ;;
+            "musllinux_") mv wheelhouse/ffmpeg-musllinux-x86_64.tar.gz wheelhouse/ffmpeg-musllinux-loongarch64.tar.gz ;;
+          fi
 
       - name: Upload FFmpeg
         uses: actions/upload-artifact@v4
