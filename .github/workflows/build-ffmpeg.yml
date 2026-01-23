@@ -65,7 +65,7 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Prepare build
         run: |
@@ -74,13 +74,13 @@ jobs:
           echo "PIP_EXTRA_INDEX_URL=https://gitlab.com/api/v4/projects/65746188/packages/pypi/simple" >> $GITHUB_ENV
 
       - name: Build FFmpeg
-        uses: loong64/cibuildwheel@v3.3.0
+        uses: loong64/cibuildwheel@v3.3.1
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
-          CIBW_BEFORE_BUILD: > 
-            python scripts/build-ffmpeg.py /tmp/vendor --community
+          CIBW_BEFORE_ALL_LINUX: ./scripts/install-static-clang.sh
+          CIBW_BEFORE_BUILD_LINUX: python scripts/build-ffmpeg.py /tmp/vendor
           CIBW_BUILD: "cp311-${{ matrix.build }}${{ matrix.arch }}"
-          CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL
+          CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL RUNNER_ARCH
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: LD_LIBRARY_PATH=/tmp/vendor/lib:$LD_LIBRARY_PATH auditwheel repair --exclude libmvec.so.1 --exclude libmvec-2.so --exclude libmvec.so --exclude libmvec -w {dest_dir} {wheel}
           CIBW_TEST_COMMAND: python -c "import dummy"
 
