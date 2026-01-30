@@ -70,7 +70,7 @@ jobs:
       - name: Prepare build
         run: |
           # loongarch64 not support cuda
-          sed -i 's@use_cuda = plat in {"Linux", "Windows"}@use_cuda = False@g' scripts/build-ffmpeg.py
+          sed -i 's@use_cuda = plat in {"Linux", "Windows"} .*@use_cuda = False@g' scripts/build-ffmpeg.py
           echo "PIP_EXTRA_INDEX_URL=https://gitlab.com/api/v4/projects/65746188/packages/pypi/simple" >> $GITHUB_ENV
 
       - name: Build FFmpeg
