@@ -13,12 +13,12 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       app_build: ${{ steps.get-version.outputs.build }}
       app_version: ${{ steps.get-version.outputs.app_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Get Version
         id: get-version
@@ -58,12 +58,12 @@ jobs:
         build: [ "manylinux_", "musllinux_" ]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: PyAV-Org/pyav-ffmpeg
           ref: ${{ env.app_version }}
-      - uses: docker/setup-qemu-action@v3
-      - uses: actions/setup-python@v5
+      - uses: docker/setup-qemu-action@v4
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
@@ -84,30 +84,23 @@ jobs:
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: LD_LIBRARY_PATH=/tmp/vendor/lib:$LD_LIBRARY_PATH auditwheel repair --exclude libmvec.so.1 --exclude libmvec-2.so --exclude libmvec.so --exclude libmvec -w {dest_dir} {wheel}
           CIBW_TEST_COMMAND: python -c "import dummy"
 
-      - name: Rename file
-        run: |
-          case "${{ matrix.build }}" in
-            "manylinux_") mv wheelhouse/ffmpeg-manylinux-x86_64.tar.gz wheelhouse/ffmpeg-manylinux-loongarch64.tar.gz ;;
-            "musllinux_") mv wheelhouse/ffmpeg-musllinux-x86_64.tar.gz wheelhouse/ffmpeg-musllinux-loongarch64.tar.gz ;;
-          fi
-
       - name: Upload FFmpeg
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: output-${{ matrix.os }}-${{ matrix.arch }}
+          name: output-${{ matrix.build }}${{ matrix.arch }}
           path: wheelhouse/*.tar.gz
 
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: [ check, build ]
     if: needs.check.outputs.app_build == '1'
     env:
       app_version: ${{ needs.check.outputs.app_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download FFmpeg
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: output-*
           path: output
