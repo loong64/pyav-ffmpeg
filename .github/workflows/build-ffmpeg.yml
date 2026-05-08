@@ -44,9 +44,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  fan:
+    runs-on: ubuntu-latest
+    needs: check
+    if: needs.check.outputs.app_build == '1'
+    env:
+      app_version: ${{ needs.check.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: PyAV-Org/pyav-ffmpeg
+          ref: ${{ env.app_version }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Make cache file
+        run: python scripts/cache.py
+      - name: Cache tarballs
+        id: cache-tarballs
+        uses: actions/cache@v4
+        with:
+          path: source
+          key: tarballs-${{ hashFiles('cache.txt') }}
+      - name: Grab
+        if: steps.cache-tarballs.outputs.cache-hit != 'true'
+        run: python scripts/grab.py
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: deps
+          path: source/*
+          if-no-files-found: error
+
   build:
     runs-on: ${{ matrix.os }}
-    needs: check
+    needs: [check, fan]
     if: needs.check.outputs.app_build == '1'
     env:
       app_version: ${{ needs.check.outputs.app_version }}
@@ -62,28 +94,31 @@ jobs:
         with:
           repository: PyAV-Org/pyav-ffmpeg
           ref: ${{ env.app_version }}
-      - uses: docker/setup-qemu-action@v4
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-
+      - name: Get sources
+        uses: actions/download-artifact@v8
+        with:
+          name: deps
+          path: source
+      - uses: docker/setup-qemu-action@v4
       - name: Prepare build
         run: |
           # loongarch64 not support cuda
           sed -i 's@use_cuda = plat in {"Linux", "Windows"} .*@use_cuda = False@g' scripts/build-ffmpeg.py
+          # sed -i 's@use_amf = plat in {"Linux", "Windows"} .*@use_amf = False@g' scripts/build-ffmpeg.py
           echo "PIP_EXTRA_INDEX_URL=https://gitlab.com/api/v4/projects/65746188/packages/pypi/simple" >> $GITHUB_ENV
-
       - name: Build FFmpeg
         uses: loong64/cibuildwheel@v3.3.1
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
           CIBW_BEFORE_ALL_LINUX: ./scripts/install-static-clang.sh
           CIBW_BEFORE_BUILD_LINUX: python scripts/build-ffmpeg.py /tmp/vendor
-          CIBW_BUILD: "cp311-${{ matrix.build }}${{ matrix.arch }}"
+          CIBW_BUILD: cp311-${{ matrix.build }}${{ matrix.arch }}
           CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL RUNNER_ARCH
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: LD_LIBRARY_PATH=/tmp/vendor/lib:$LD_LIBRARY_PATH auditwheel repair --exclude libmvec.so.1 --exclude libmvec-2.so --exclude libmvec.so --exclude libmvec -w {dest_dir} {wheel}
           CIBW_TEST_COMMAND: python -c "import dummy"
-
       - name: Upload FFmpeg
         uses: actions/upload-artifact@v6
         with:
@@ -98,14 +133,12 @@ jobs:
       app_version: ${{ needs.check.outputs.app_version }}
     steps:
       - uses: actions/checkout@v6
-
       - name: Download FFmpeg
         uses: actions/download-artifact@v6
         with:
           pattern: output-*
           path: output
           merge-multiple: true
-
       - name: Create a Release on GitHub
         uses: softprops/action-gh-release@v2
         with:
